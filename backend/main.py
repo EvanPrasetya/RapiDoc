@@ -50,7 +50,7 @@ app.add_middleware(
 
 MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024  # 20 MB
 
-SESSION_CACHE_DIR = os.path.join(_THIS_DIR, ".session_cache")
+SESSION_CACHE_DIR = os.path.join(tempfile.gettempdir(), ".session_cache")
 os.makedirs(SESSION_CACHE_DIR, exist_ok=True)
 
 DOCUMENTS_STORE: Dict[str, Dict[str, Any]] = {}
