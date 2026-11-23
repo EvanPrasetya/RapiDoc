@@ -488,6 +488,14 @@ function WorkspaceContent() {
     checkHealthAndPresets();
   }, []);
 
+  // Responsiveness: auto-fit A4 page zoom on mobile viewports (< 640px)
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 640) {
+      const fitZoom = Math.max(50, Math.min(85, Math.floor(((window.innerWidth - 24) / 680) * 100)));
+      setZoomPercent(fitZoom);
+    }
+  }, []);
+
   useEffect(() => {
     if (initialPresetParam && presets.some((p) => p.id === initialPresetParam)) {
       setSelectedPresetId(initialPresetParam);
@@ -2482,7 +2490,7 @@ function WorkspaceContent() {
           transform: `scale(${zoomPercent / 100})`,
           transformOrigin: "top center",
         }}
-        className={`relative mx-auto w-full max-w-[680px] min-h-[860px] rounded-sm border bg-white shadow-paper transition-transform ${fontClass} text-slate-950 flex flex-col justify-between px-8 py-10 sm:px-16 sm:py-14 ${isEditMode ? "border-blue-300 ring-2 ring-blue-500/10" : "border-slate-200/90"
+        className={`relative mx-auto w-full max-w-[680px] min-h-[700px] sm:min-h-[860px] rounded-sm border bg-white shadow-paper transition-transform ${fontClass} text-slate-950 flex flex-col justify-between px-4 py-6 sm:px-12 sm:py-12 md:px-16 md:py-14 ${isEditMode ? "border-blue-300 ring-2 ring-blue-500/10" : "border-slate-200/90"
           }`}
       >
         <div
@@ -3237,36 +3245,36 @@ function WorkspaceContent() {
           </div>
 
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate text-xs sm:text-sm font-bold text-slate-900 max-w-[145px] sm:max-w-[280px] md:max-w-md">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <h1 className="truncate text-xs sm:text-sm font-bold text-slate-900 max-w-[100px] xs:max-w-[150px] sm:max-w-[280px] md:max-w-md">
                 {activeDoc?.filename || "DOKUMEN.docx"}
               </h1>
 
               {/* Status Badge */}
               {activeDoc?.status === "Siap diunduh" ? (
-                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                <span className="inline-flex shrink-0 items-center gap-1 sm:gap-1.5 rounded-full bg-emerald-50 px-1.5 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-semibold text-emerald-700">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  Siap diunduh
+                  <span className="hidden sm:inline">Siap diunduh</span>
                 </span>
               ) : (
-                <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-700">
+                <span className="inline-flex shrink-0 items-center gap-1 sm:gap-1.5 rounded-full bg-amber-50 px-1.5 sm:px-2.5 py-0.5 text-[10px] sm:text-[11px] font-semibold text-amber-700">
                   <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
-                  Belum diproses
+                  <span className="hidden sm:inline">Belum diproses</span>
                 </span>
               )}
             </div>
 
-            <p className="truncate text-[11px] text-slate-500">
+            <p className="truncate text-[10px] sm:text-[11px] text-slate-500">
               {activeDoc?.size_kb || 9} KB • {currentPreset.short_name} •{" "}
               {activeDoc?.page_delta && activeDoc.page_delta > 0
-                ? `+${activeDoc.page_delta} halaman`
-                : `${totalPages} halaman`}
+                ? `+${activeDoc.page_delta} hal`
+                : `${totalPages} hal`}
             </p>
           </div>
         </div>
 
         {/* Right: Mode toggle, Format Sekarang, Unduh .DOCX (with Multi-Format Dropdown), and Mobile Drawer Button */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={() =>
@@ -3285,7 +3293,7 @@ function WorkspaceContent() {
                   ? "Mode: Scroll Semua Halaman (Klik untuk Render Binary docx-preview)"
                   : "Mode: docx-preview (Klik untuk Mode Per Halaman A4)"
             }
-            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-2 text-[11px] font-medium text-slate-600 hover:bg-slate-50 transition"
+            className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 px-1.5 sm:px-2 text-[11px] font-medium text-slate-600 hover:bg-slate-50 transition"
           >
             {previewRenderMode === "paginated" ? (
               <>
@@ -3308,7 +3316,7 @@ function WorkspaceContent() {
           <button
             type="button"
             onClick={handleToggleEditMode}
-            className={`relative inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition ${isEditMode
+            className={`relative inline-flex h-8 items-center gap-1 sm:gap-1.5 rounded-lg border px-2 sm:px-2.5 text-xs font-semibold transition ${isEditMode
               ? "border-blue-600 bg-blue-50 text-blue-700"
               : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
               }`}
@@ -3329,21 +3337,21 @@ function WorkspaceContent() {
             type="button"
             onClick={handleFormatNow}
             disabled={isLoading || isSavingEdits}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-blue-600 px-3 sm:px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
+            className="inline-flex h-8 items-center gap-1 sm:gap-1.5 rounded-lg sm:rounded-xl bg-blue-600 px-2 sm:px-3.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition shrink-0"
           >
             <Sliders className="h-3.5 w-3.5" />
-            <span>{isLoading ? "Proses..." : "Format"}</span>
-            <span className="hidden md:inline">Sekarang</span>
+            <span className="hidden xs:inline">{isLoading ? "Proses..." : "Format"}</span>
+            <span className="hidden md:inline"> Sekarang</span>
           </button>
 
           {activeDoc && (
-            <div className="relative" ref={downloadMenuRef}>
-              <div className="inline-flex items-center rounded-xl shadow-sm overflow-hidden">
+            <div className="relative shrink-0" ref={downloadMenuRef}>
+              <div className="inline-flex items-center rounded-lg sm:rounded-xl shadow-sm overflow-hidden h-8">
                 <button
                   type="button"
                   onClick={handleDownloadDocx}
                   disabled={isSavingEdits}
-                  className={`inline-flex items-center gap-1.5 px-3 sm:px-3.5 py-2 text-xs font-semibold transition disabled:opacity-50 ${activeDoc.status === "Siap diunduh"
+                  className={`inline-flex h-8 items-center gap-1 sm:gap-1.5 px-2 sm:px-3 text-xs font-semibold transition disabled:opacity-50 ${activeDoc.status === "Siap diunduh"
                     ? "bg-emerald-600 text-white hover:bg-emerald-700"
                     : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
                     }`}
@@ -3351,13 +3359,14 @@ function WorkspaceContent() {
                 >
                   <Download className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">
-                    {isSavingEdits ? "Menyimpan..." : "Unduh .DOCX"}
+                    {isSavingEdits ? "Menyimpan..." : "Unduh"}
                   </span>
+                  <span className="hidden md:inline"> .DOCX</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsDownloadMenuOpen((v) => !v)}
-                  className={`px-1.5 py-2 transition border-l ${activeDoc.status === "Siap diunduh"
+                  className={`h-8 px-1 sm:px-1.5 flex items-center justify-center transition border-l ${activeDoc.status === "Siap diunduh"
                     ? "bg-emerald-700 text-white border-emerald-500 hover:bg-emerald-800"
                     : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
                     }`}
@@ -3449,8 +3458,9 @@ function WorkspaceContent() {
         </div>
       )}
 
-      <div className="z-20 flex h-11 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6 text-xs">
-        <div className="flex items-center gap-2">
+      <div className="z-20 flex h-11 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-6 text-xs">
+        {/* Left: Hidden on small mobile screens (< sm) so it doesn't collide with page navigation and zoom */}
+        <div className="hidden sm:flex items-center gap-2">
           <span className="text-slate-600 font-medium">
             Halaman {safeCurrentPage} dari {totalPages}
           </span>
@@ -3460,7 +3470,7 @@ function WorkspaceContent() {
         </div>
 
         {/* Center Page Navigation */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 mx-auto sm:mx-0">
           <button
             type="button"
             onClick={() => jumpToPage(safeCurrentPage - 1)}
@@ -3469,7 +3479,7 @@ function WorkspaceContent() {
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <div className="min-w-[54px] rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-center text-xs font-semibold text-slate-800">
+          <div className="min-w-[50px] sm:min-w-[54px] rounded-lg border border-slate-200 bg-slate-50 px-2 sm:px-2.5 py-1 text-center text-xs font-semibold text-slate-800">
             {safeCurrentPage} / {totalPages}
           </div>
           <button
@@ -3492,16 +3502,16 @@ function WorkspaceContent() {
         </div>
 
         {/* Right Zoom & Refresh Controls */}
-        <div className="flex items-center gap-1 sm:gap-2">
+        <div className="flex items-center gap-0.5 sm:gap-1.5 shrink-0">
           <button
             type="button"
-            onClick={() => setZoomPercent((z) => Math.max(60, z - 10))}
+            onClick={() => setZoomPercent((z) => Math.max(40, z - 10))}
             className="rounded-lg p-1 text-slate-600 hover:bg-slate-100"
             title="Perkecil"
           >
             <Minus className="h-3.5 w-3.5" />
           </button>
-          <span className="w-10 text-center font-semibold text-slate-700">
+          <span className="w-9 sm:w-10 text-center font-semibold text-slate-700 text-xs">
             {zoomPercent}%
           </span>
           <button
@@ -3514,9 +3524,15 @@ function WorkspaceContent() {
           </button>
           <button
             type="button"
-            onClick={() => setZoomPercent(95)}
-            className="ml-1 rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-            title="Reset Zoom & Segarkan Pratinjau"
+            onClick={() => {
+              if (typeof window !== "undefined" && window.innerWidth < 640) {
+                setZoomPercent(Math.max(50, Math.min(85, Math.floor(((window.innerWidth - 24) / 680) * 100))));
+              } else {
+                setZoomPercent(95);
+              }
+            }}
+            className="ml-0.5 sm:ml-1 rounded-lg p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+            title="Reset Zoom & Sesuaikan Layar"
           >
             <RotateCw className="h-3.5 w-3.5" />
           </button>
@@ -3526,7 +3542,7 @@ function WorkspaceContent() {
       {/* Microsoft Word Ribbon Toolbar (Only active when isEditMode is true) */}
       {isEditMode && (
         <div className="z-20 border-b border-blue-200 bg-white shadow-xs">
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 px-3 sm:px-6 py-1.5 text-xs overflow-x-auto">
+          <div className="flex flex-nowrap items-center gap-1 sm:gap-2 px-2.5 sm:px-6 py-1.5 text-xs overflow-x-auto scrollbar-thin scroll-smooth select-none">
             {/* Group 1: Undo / Redo */}
             <div className="flex items-center gap-0.5 border-r border-slate-200 pr-2 shrink-0">
               <button
@@ -3965,28 +3981,30 @@ function WorkspaceContent() {
             {/* Active Block Indicator Badge */}
             <div className="ml-auto flex items-center gap-2 text-[11px] text-blue-700 font-medium shrink-0">
               {activeBlockIndex !== null ? (
-                <span className="rounded bg-blue-100 px-2 py-0.5 text-blue-800 font-semibold border border-blue-200">
-                  Paragraf #{activeBlockIndex} Aktif
+                <span className="rounded bg-blue-100 px-1.5 sm:px-2 py-0.5 text-blue-800 font-semibold border border-blue-200 whitespace-nowrap">
+                  <span className="sm:hidden">P#{activeBlockIndex}</span>
+                  <span className="hidden sm:inline">Paragraf #{activeBlockIndex} Aktif</span>
                 </span>
               ) : (
-                <span className="text-slate-500 italic">
+                <span className="text-slate-500 italic hidden md:inline">
                   Klik teks di halaman A4 untuk memformat
                 </span>
               )}
             </div>
 
             {/* Ribbon Action Buttons: Simpan & Selesai */}
-            <div className="ml-2 flex items-center gap-1.5 shrink-0">
+            <div className="ml-1 sm:ml-2 flex items-center gap-1 sm:gap-1.5 shrink-0">
               {hasUnsavedEdits && (
                 <button
                   type="button"
                   onClick={() => handleSaveInlineEdits(false)}
                   disabled={isSavingEdits}
-                  className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
+                  className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-2 sm:px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50 transition"
                   title="Simpan perubahan langsung ke file Word (.docx)"
                 >
                   <Save className="h-3 w-3" />
-                  <span>{isSavingEdits ? "Menyimpan..." : "Simpan .DOCX"}</span>
+                  <span className="hidden sm:inline">{isSavingEdits ? "Menyimpan..." : "Simpan .DOCX"}</span>
+                  <span className="sm:hidden">Simpan</span>
                 </button>
               )}
               <button
@@ -4011,10 +4029,10 @@ function WorkspaceContent() {
         <div
           ref={previewScrollRef}
           onScroll={handlePreviewScroll}
-          className="relative flex-1 overflow-y-auto px-3 py-6 sm:px-8 sm:py-8"
+          className="relative flex-1 overflow-x-auto overflow-y-auto px-1 py-4 sm:px-8 sm:py-8"
         >
           {previewRenderMode === "docx_preview" && activeDoc && !activeDoc.doc_id.startsWith("local-") ? (
-            <div className="pb-16">
+            <div className="pb-16 flex justify-center items-start min-w-full">
               <DocxClientRenderer
                 docxUrl={getDownloadDocxUrl(activeDoc.doc_id)}
                 zoomPercent={zoomPercent}
@@ -4022,11 +4040,13 @@ function WorkspaceContent() {
               />
             </div>
           ) : previewRenderMode === "scroll" ? (
-            <div className="space-y-8 pb-16">
+            <div className="space-y-8 pb-16 flex flex-col items-center min-w-full">
               {pages.map((pg) => renderA4PageSheet(pg))}
             </div>
           ) : (
-            <div className="pb-16">{activePageObj && renderA4PageSheet(activePageObj)}</div>
+            <div className="pb-16 flex justify-center items-start min-w-full">
+              {activePageObj && renderA4PageSheet(activePageObj)}
+            </div>
           )}
 
           {/* Floating Toast Notification at bottom left/center like video 00:10 */}
@@ -4058,21 +4078,21 @@ function WorkspaceContent() {
 
         {/* Mobile Slide-Over Drawer (Matches video 00:08 "Workspace panel") */}
         {isMobileDrawerOpen && (
-          <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/35 backdrop-blur-[1px] lg:hidden">
-            <div className="flex h-full w-[88%] max-w-[380px] flex-col bg-white shadow-2xl">
+          <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40 backdrop-blur-xs lg:hidden">
+            <div className="flex h-full w-[90%] max-w-[380px] flex-col bg-white shadow-2xl">
               <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
                 <span className="text-sm font-bold text-slate-900">
-                  Workspace panel
+                  Workspace Panel
                 </span>
                 <button
                   type="button"
                   onClick={() => setIsMobileDrawerOpen(false)}
-                  className="rounded-lg p-1 text-slate-500 hover:bg-slate-100"
+                  className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100"
                 >
                   <X className="h-4 w-4" />
                 </button>
               </div>
-              <div className="flex-1 overflow-hidden">
+              <div className="flex-1 overflow-y-auto">
                 {renderWorkspacePanelContent()}
               </div>
             </div>
