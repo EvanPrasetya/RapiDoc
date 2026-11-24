@@ -18,6 +18,8 @@ export interface PreviewBlock {
   font?: string;
   size_pt?: number;
   bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
   indent_cm?: number;
   left_indent_cm?: number;
   line_spacing?: number;
@@ -240,6 +242,9 @@ export async function updateDocumentContentApi(params: {
     }>;
   }>;
   reordered_p_indices?: number[];
+  raw_markdown?: string;
+  document_base64?: string;
+  filename?: string;
 }): Promise<WorkspaceDocumentResponse> {
   let res: Response;
   try {
@@ -255,6 +260,9 @@ export async function updateDocumentContentApi(params: {
         deleted_p_indices: params.deleted_p_indices,
         new_pages: params.new_pages,
         reordered_p_indices: params.reordered_p_indices,
+        raw_markdown: params.raw_markdown,
+        document_base64: params.document_base64,
+        filename: params.filename,
       }),
     });
   } catch {
@@ -266,4 +274,22 @@ export async function updateDocumentContentApi(params: {
     );
   }
   return res.json();
+}
+
+export async function downloadDocxFallbackApi(params: {
+  doc_id: string;
+  filename?: string;
+  preset_id?: string;
+  raw_markdown?: string;
+  document_base64?: string;
+}): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/documents/${params.doc_id}/download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!res.ok) {
+    throw new Error("Gagal mengunduh dokumen dari server");
+  }
+  return res.blob();
 }

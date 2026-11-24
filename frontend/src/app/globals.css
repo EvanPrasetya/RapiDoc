@@ -48,11 +48,22 @@ body {
 
 /* Print styles for pixel-perfect PDF export via browser print engine */
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html,
   body {
     background: #ffffff !important;
     color: #000000 !important;
     padding: 0 !important;
     margin: 0 !important;
+    width: 210mm !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   header,
@@ -60,33 +71,55 @@ body {
   aside,
   .print-hide,
   button,
-  .no-print {
+  .no-print,
+  .toast-banner,
+  .error-banner,
+  .workspace-toolbar,
+  .word-ribbon,
+  input,
+  select,
+  [role="dialog"] {
     display: none !important;
+    visibility: hidden !important;
   }
 
   main,
-  .print-container {
+  .print-container,
+  #__next,
+  body > div {
     overflow: visible !important;
     height: auto !important;
     display: block !important;
     padding: 0 !important;
     margin: 0 !important;
+    border: none !important;
   }
 
-  .a4-preview-page {
+  .a4-preview-page,
+  .a4-page-sheet {
     box-shadow: none !important;
     border: none !important;
-    margin: 0 auto 0 auto !important;
+    margin: 0 auto !important;
     page-break-after: always !important;
     break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
     width: 210mm !important;
+    height: 297mm !important;
     min-height: 297mm !important;
+    max-height: 297mm !important;
     padding: 25mm 25mm 20mm 30mm !important;
     transform: none !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
   }
 
-  @page {
-    size: A4;
-    margin: 0;
+  /* Hide selection/outline/editor rings during print */
+  * {
+    outline: none !important;
+    box-shadow: none !important;
   }
 }

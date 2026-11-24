@@ -72,6 +72,7 @@ import {
   formatDocumentApi,
   updateDocumentContentApi,
   getDownloadDocxUrl,
+  downloadDocxFallbackApi,
   WorkspaceDocumentResponse,
   PreviewPage,
   PreviewBlock,
@@ -1116,6 +1117,8 @@ function WorkspaceContent() {
         deleted_p_indices: deletedParagraphIndices.length > 0 ? deletedParagraphIndices : undefined,
         new_pages: newPagesToSubmit.length > 0 ? newPagesToSubmit : undefined,
         reordered_p_indices: reorderedPIndices.length > 0 ? reorderedPIndices : undefined,
+        raw_markdown: activeRawMarkdown,
+        filename: activeDoc.filename,
       });
       setActiveDoc(resp);
       setEditedParagraphs({});
@@ -1151,16 +1154,43 @@ function WorkspaceContent() {
     let targetDoc = activeDoc;
     if (hasUnsavedEdits) {
       const saved = await handleSaveInlineEdits(true);
-      if (!saved) return;
-      targetDoc = saved;
+      if (saved) targetDoc = saved;
     }
-    const url = getDownloadDocxUrl(targetDoc.doc_id);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = targetDoc.filename || "dokumen-rapidoc.docx";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    try {
+      const directUrl = getDownloadDocxUrl(targetDoc.doc_id);
+      const res = await fetch(directUrl);
+      if (res.ok) {
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        a.download = targetDoc.filename || "dokumen-rapidoc.docx";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+        return;
+      }
+      // If direct GET 404 (e.g. serverless cold start), fallback to POST download with raw_markdown
+      const fallbackBlob = await downloadDocxFallbackApi({
+        doc_id: targetDoc.doc_id,
+        filename: targetDoc.filename,
+        preset_id: selectedPresetId,
+        raw_markdown: activeRawMarkdown,
+      });
+      const blobUrl = URL.createObjectURL(fallbackBlob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = targetDoc.filename || "dokumen-rapidoc.docx";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      // Final fallback
+      const url = getDownloadDocxUrl(targetDoc.doc_id);
+      window.open(url, "_blank");
+    }
   };
 
   const handleExportPdf = async () => {
@@ -1172,11 +1202,181 @@ function WorkspaceContent() {
       "Membuka dialog cetak PDF",
       "Pilih tujuan 'Save as PDF' / 'Simpan sebagai PDF' untuk mengunduh dokumen"
     );
-    // Switch to scroll view so all pages are present in DOM
-    setPreviewRenderMode("scroll");
-    setTimeout(() => {
-      window.print();
-    }, 400);
+
+    // Build pristine isolated print HTML containing ONLY the exact slides/pages
+    const title = coverData.title || activeDoc?.filename || "Dokumen RapiDoc";
+    const pagesToPrint = pages && pages.length > 0 ? pages : (activeDoc?.analysis?.pages || []);
+
+    let pagesHtml = "";
+    pagesToPrint.forEach((pg) => {
+      let pageInner = `<div class="a4-print-sheet ${pg.is_cover ? 'cover-sheet' : ''}">`;
+      pageInner += `<div class="sheet-content">`;
+
+      if (pg.blocks) {
+        pg.blocks.forEach((b, bIdx) => {
+          const isCoverLogo = b.type === "image_logo" || (pg.is_cover && b.has_image && bIdx < 6);
+          if (isCoverLogo) {
+            const displayLogoSrc = coverData.logo_base64 || b.image_src;
+            const logoWidthCm = parseFloat(coverData.logo_width_cm || "3.8") || 3.8;
+            const logoAlign = coverData.logo_align || "center";
+            const logoMarginTopPt = parseFloat(coverData.logo_margin_top_pt || "8") || 8;
+            if (displayLogoSrc) {
+              pageInner += `<div style="text-align:${logoAlign};padding-top:${logoMarginTopPt}pt;margin-bottom:14px;">
+                <img src="${displayLogoSrc}" style="width:${logoWidthCm}cm;max-width:100%;height:auto;display:inline-block;" alt="Logo" />
+              </div>`;
+            }
+          } else if (b.type === "image" || b.has_image) {
+            const imgSrc = b.image_src || "";
+            const align = b.align || "center";
+            const widthCm = b.image_width_cm || 7.0;
+            if (imgSrc) {
+              pageInner += `<div style="text-align:${align};margin:12px 0;">
+                <img src="${imgSrc}" style="width:${widthCm}cm;max-width:100%;height:auto;display:inline-block;border-radius:4px;" alt="${b.text || 'Gambar'}" />
+              </div>`;
+            }
+          } else if (b.type === "h1") {
+            const align = b.align === "left" ? "left" : "center";
+            const pVal = getEditableParagraphText(b);
+            pageInner += `<h1 style="text-align:${align};font-size:15pt;font-weight:bold;margin:16px 0 10px 0;line-height:1.35;">${pVal}</h1>`;
+          } else if (b.type === "h2" || b.type === "h3") {
+            const pVal = getEditableParagraphText(b);
+            pageInner += `<h2 style="text-align:left;font-size:12.5pt;font-weight:bold;margin:12px 0 6px 0;line-height:1.35;">${pVal}</h2>`;
+          } else if (b.type === "list_bullet") {
+            const pVal = getEditableParagraphText(b);
+            pageInner += `<p style="padding-left:24px;text-indent:-16px;margin:4px 0;line-height:1.6;font-size:12pt;">&bull; ${pVal}</p>`;
+          } else if (b.type === "table" && b.rows) {
+            const tableRows = getEditableTableRows(b);
+            pageInner += `<div style="margin:12px 0;width:100%;"><table border="1" cellpadding="6" style="width:100%;border-collapse:collapse;border:1px solid #1e293b;font-size:10.5pt;"><tbody>`;
+            tableRows.forEach((row, rI) => {
+              pageInner += `<tr ${rI === 0 ? 'style="background:#f1f5f9;font-weight:bold;"' : ''}>`;
+              row.forEach((cell) => {
+                pageInner += `<td style="border:1px solid #334155;padding:6px 10px;">${cell}</td>`;
+              });
+              pageInner += `</tr>`;
+            });
+            pageInner += `</tbody></table></div>`;
+          } else if (b.type === "bib_item") {
+            const pVal = getEditableParagraphText(b);
+            pageInner += `<p style="padding-left:32px;text-indent:-32px;text-align:justify;line-height:1.65;font-size:11pt;margin:6px 0;">${pVal}</p>`;
+          } else {
+            const pVal = getEditableParagraphText(b);
+            const pIdx = b.p_idx;
+            const customStyle = pIdx !== undefined ? editedStyles[pIdx] : undefined;
+            const align = customStyle?.align || b.align || "justify";
+            const indent = (customStyle?.indent_cm ?? b.indent_cm ?? 0) > 0 && align !== "center" && align !== "right" ? "1.25cm" : "0";
+            const fontName = customStyle?.font_name || currentPreset.font_name || "Times New Roman";
+            const fontSize = customStyle?.size_pt ? `${customStyle.size_pt}pt` : "12pt";
+            const isBold = customStyle?.bold ?? b.bold;
+            const isItalic = customStyle?.italic ?? b.italic;
+            const isUnderline = customStyle?.underline;
+            pageInner += `<p style="text-align:${align};text-indent:${indent};font-family:'${fontName}',Times,serif;font-size:${fontSize};font-weight:${isBold ? 'bold' : 'normal'};font-style:${isItalic ? 'italic' : 'normal'};text-decoration:${isUnderline ? 'underline' : 'none'};line-height:1.6;margin:6px 0;">${pVal}</p>`;
+          }
+        });
+      }
+
+      pageInner += `</div>`; // .sheet-content
+
+      if (pg.footer_label) {
+        pageInner += `<div class="sheet-footer" style="text-align:center;font-size:10pt;color:#475569;margin-top:auto;padding-top:16px;">${pg.footer_label}</div>`;
+      }
+
+      pageInner += `</div>`; // .a4-print-sheet
+      pagesHtml += pageInner;
+    });
+
+    const printDocHtml = `<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<title>${title}</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+  * {
+    box-sizing: border-box;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #ffffff;
+    font-family: 'Times New Roman', Times, serif;
+    color: #0f172a;
+  }
+  .a4-print-sheet {
+    width: 210mm;
+    height: 297mm;
+    min-height: 297mm;
+    max-height: 297mm;
+    padding: 25mm 25mm 20mm 30mm;
+    margin: 0 auto;
+    background: #ffffff;
+    page-break-after: always;
+    break-after: page;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow: hidden;
+    position: relative;
+  }
+  .cover-sheet {
+    text-align: center;
+    justify-content: space-between;
+  }
+  .sheet-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+  }
+  .cover-sheet .sheet-content {
+    justify-content: space-between;
+    height: 100%;
+  }
+  p, h1, h2, h3, div, table {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+</style>
+</head>
+<body>
+  ${pagesHtml}
+</body>
+</html>`;
+
+    // Create an invisible iframe to print strictly the clean document pages (1 slide = 1 page, zero web UI)
+    let iframe = document.getElementById("rapidoc-print-frame") as HTMLIFrameElement;
+    if (!iframe) {
+      iframe = document.createElement("iframe");
+      iframe.id = "rapidoc-print-frame";
+      iframe.style.position = "fixed";
+      iframe.style.right = "0";
+      iframe.style.bottom = "0";
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "none";
+      document.body.appendChild(iframe);
+    }
+
+    const frameDoc = iframe.contentWindow?.document || iframe.contentDocument;
+    if (frameDoc && iframe.contentWindow) {
+      frameDoc.open();
+      frameDoc.write(printDocHtml);
+      frameDoc.close();
+      setTimeout(() => {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      }, 350);
+    } else {
+      setPreviewRenderMode("scroll");
+      setTimeout(() => {
+        window.print();
+      }, 350);
+    }
   };
 
   const handleExportHtml = async () => {
@@ -2490,7 +2690,7 @@ function WorkspaceContent() {
           transform: `scale(${zoomPercent / 100})`,
           transformOrigin: "top center",
         }}
-        className={`relative mx-auto w-full max-w-[680px] min-h-[700px] sm:min-h-[860px] rounded-sm border bg-white shadow-paper transition-transform ${fontClass} text-slate-950 flex flex-col justify-between px-4 py-6 sm:px-12 sm:py-12 md:px-16 md:py-14 ${isEditMode ? "border-blue-300 ring-2 ring-blue-500/10" : "border-slate-200/90"
+        className={`a4-page-sheet a4-preview-page relative mx-auto w-full max-w-[680px] min-h-[700px] sm:min-h-[860px] rounded-sm border bg-white shadow-paper transition-transform ${fontClass} text-slate-950 flex flex-col justify-between px-4 py-6 sm:px-12 sm:py-12 md:px-16 md:py-14 ${isEditMode ? "border-blue-300 ring-2 ring-blue-500/10" : "border-slate-200/90"
           }`}
       >
         <div
@@ -3228,7 +3428,7 @@ function WorkspaceContent() {
       {/* ====================================================================
           TOP BAR (Matches video 00:07 & 00:14 on mobile & desktop)
          ==================================================================== */}
-      <header className="z-30 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6">
+      <header className="z-30 flex h-14 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6 print:hidden no-print">
         {/* Left: Back button + Document Icon + Filename + Status Badge */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
@@ -3446,7 +3646,7 @@ function WorkspaceContent() {
           SECONDARY PREVIEW TOOLBAR (Halaman 1 dari 18 | < 1/18 > | - 95% + | ↻)
          ==================================================================== */}
       {errorMsg && (
-        <div className="z-20 flex items-center justify-between border-b border-red-200 bg-red-50 px-4 py-2 text-xs font-medium text-red-700">
+        <div className="z-20 flex items-center justify-between border-b border-red-200 bg-red-50 px-4 py-2 text-xs font-medium text-red-700 print:hidden no-print error-banner">
           <span>{errorMsg}</span>
           <button
             type="button"
@@ -3458,7 +3658,7 @@ function WorkspaceContent() {
         </div>
       )}
 
-      <div className="z-20 flex h-11 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-6 text-xs">
+      <div className="z-20 flex h-11 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-6 text-xs print:hidden no-print workspace-toolbar">
         {/* Left: Hidden on small mobile screens (< sm) so it doesn't collide with page navigation and zoom */}
         <div className="hidden sm:flex items-center gap-2">
           <span className="text-slate-600 font-medium">
@@ -3541,7 +3741,7 @@ function WorkspaceContent() {
 
       {/* Microsoft Word Ribbon Toolbar (Only active when isEditMode is true) */}
       {isEditMode && (
-        <div className="z-20 border-b border-blue-200 bg-white shadow-xs">
+        <div className="z-20 border-b border-blue-200 bg-white shadow-xs print:hidden no-print word-ribbon">
           <div className="flex flex-nowrap items-center gap-1 sm:gap-2 px-2.5 sm:px-6 py-1.5 text-xs overflow-x-auto scrollbar-thin scroll-smooth select-none">
             {/* Group 1: Undo / Redo */}
             <div className="flex items-center gap-0.5 border-r border-slate-200 pr-2 shrink-0">
@@ -4051,7 +4251,7 @@ function WorkspaceContent() {
 
           {/* Floating Toast Notification at bottom left/center like video 00:10 */}
           {toastBanner && toastBanner.visible && (
-            <div className="fixed bottom-5 left-4 z-40 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
+            <div className="fixed bottom-5 left-4 z-40 flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg print:hidden no-print toast-banner">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
                 <FileText className="h-4 w-4" />
               </div>

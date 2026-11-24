@@ -9,6 +9,7 @@ import time
 import shutil
 import subprocess
 import tempfile
+import base64
 from typing import Dict, Any, Optional, List
 
 # Ensure backend directory is always on sys.path regardless of where uvicorn/python is launched from
@@ -162,6 +163,17 @@ class UpdateContentRequest(BaseModel):
     deleted_p_indices: Optional[List[int]] = []
     new_pages: Optional[List[Dict[str, Any]]] = []
     reordered_p_indices: Optional[List[int]] = None
+    raw_markdown: Optional[str] = None
+    document_base64: Optional[str] = None
+    filename: Optional[str] = None
+
+
+class DownloadFallbackRequest(BaseModel):
+    document_base64: Optional[str] = None
+    raw_markdown: Optional[str] = None
+    filename: Optional[str] = None
+    preset_id: Optional[str] = "makalah"
+    cover_data: Optional[Dict[str, Any]] = None
 
 
 class CustomTemplateRequest(BaseModel):
@@ -485,7 +497,54 @@ def update_document_content(doc_id: str, req: UpdateContentRequest):
     try:
         record = _get_session_record(doc_id)
         if not record:
-            raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan di sesi workspace.")
+            # Fallback hydration for serverless / stateless environments (e.g. Vercel)
+            if req.document_base64:
+                try:
+                    raw_bytes = base64.b64decode(req.document_base64)
+                    doc = validate_docx_bytes(raw_bytes)
+                    record = {
+                        "id": doc_id,
+                        "filename": req.filename or f"DOKUMEN-{doc_id[:8]}.docx",
+                        "size_bytes": len(raw_bytes),
+                        "created_at": int(time.time()),
+                        "source_type": "upload",
+                        "original_bytes": raw_bytes,
+                        "active_bytes": raw_bytes,
+                        "raw_markdown": req.raw_markdown,
+                        "status": "Belum diproses",
+                        "preset_id": req.preset_id or "makalah",
+                        "extracted_meta": dict(req.cover_data or {}),
+                        "initial_pages": 1,
+                    }
+                except Exception:
+                    record = None
+
+            if not record and req.raw_markdown and req.raw_markdown.strip():
+                preset_id = req.preset_id or "makalah"
+                strip_cover = preset_id in ACADEMIC_COVER_PRESETS
+                doc_rebuilt, extracted_meta = markdown_to_docx(
+                    req.raw_markdown, strip_raw_cover=strip_cover, preset_id=preset_id
+                )
+                rbuf = io.BytesIO()
+                doc_rebuilt.save(rbuf)
+                raw_bytes = rbuf.getvalue()
+                record = {
+                    "id": doc_id,
+                    "filename": req.filename or f"{_slugify_filename(extracted_meta.get('title') or preset_id)[:42]}.docx",
+                    "size_bytes": len(raw_bytes),
+                    "created_at": int(time.time()),
+                    "source_type": "markdown",
+                    "original_bytes": raw_bytes,
+                    "active_bytes": raw_bytes,
+                    "raw_markdown": req.raw_markdown,
+                    "status": "Belum diproses",
+                    "preset_id": preset_id,
+                    "extracted_meta": extracted_meta,
+                    "initial_pages": 1,
+                }
+
+            if not record:
+                raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan di sesi workspace.")
 
         # Merge updated cover_data or logo_update into record metadata
         if "extracted_meta" not in record:
@@ -538,6 +597,52 @@ def download_docx(doc_id: str):
     record = _get_session_record(doc_id)
     if not record:
         raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan.")
+
+    safe_name = record["filename"].replace('"', "")
+    if not safe_name.lower().endswith(".docx"):
+        safe_name += ".docx"
+
+    return StreamingResponse(
+        io.BytesIO(record["active_bytes"]),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}"',
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@app.post("/api/documents/{doc_id}/download")
+def download_docx_post(doc_id: str, req: DownloadFallbackRequest):
+    record = _get_session_record(doc_id)
+    if not record:
+        if req.document_base64:
+            try:
+                raw_bytes = base64.b64decode(req.document_base64)
+                record = {
+                    "id": doc_id,
+                    "filename": req.filename or f"DOKUMEN-{doc_id[:8]}.docx",
+                    "active_bytes": raw_bytes,
+                }
+            except Exception:
+                record = None
+        elif req.raw_markdown and req.raw_markdown.strip():
+            try:
+                preset_id = req.preset_id or "makalah"
+                strip_cover = preset_id in ACADEMIC_COVER_PRESETS
+                doc_rebuilt, _ = markdown_to_docx(req.raw_markdown, strip_raw_cover=strip_cover, preset_id=preset_id)
+                buf = io.BytesIO()
+                doc_rebuilt.save(buf)
+                record = {
+                    "id": doc_id,
+                    "filename": req.filename or f"DOKUMEN-{doc_id[:8]}.docx",
+                    "active_bytes": buf.getvalue(),
+                }
+            except Exception:
+                record = None
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Dokumen tidak ditemukan di sesi workspace.")
 
     safe_name = record["filename"].replace('"', "")
     if not safe_name.lower().endswith(".docx"):
